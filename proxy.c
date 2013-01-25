@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -83,21 +84,29 @@ static int parseUrl(char * request, char * host, int * port){
 
 }
 // Getting Data from the Remote Server => Connection to host port 80 by default  + send a HTTP request for the appropriate file.
-static int sendRequest(char * request, int *port){
+static int sendRequest(char * request, int *port, char ** filename){
 
         struct hostent *hp;
         struct sockaddr_in sin;
         int socketClientRequest;
-        char * buf[2048];
+        int on = 1;
+        char * buf[512];
         int len;
+        FILE * fileRet;
+        // request = "GET\x20/\x20HTTP/1.0\r\n\r\n";
+
+
+        request = "GET / HTTP/1.1\r\nUser-Agent: curl/7.21.4 (universal-apple-darwin11.0) libcurl/7.2.4 OpenSSL/0.9.8r zlib/1.2.5\nHost: hrdy.me\nAccept: */*\r\n\r\n";
 
 
         /* translate host name into peer’s IP address */
-        hp = gethostbyname("http://google.com");
+        hp = gethostbyname("hrdy.me");
         if (!hp) {
             fprintf(stderr, "simplex-talk: unknown host: %s\n", "google");
             exit(1);
         }
+
+
         /* build address data structure */
         bzero((char *)&sin, sizeof(sin));
         sin.sin_family = AF_INET;
@@ -110,6 +119,8 @@ static int sendRequest(char * request, int *port){
             perror("simplex-talk: socket");
             exit(1);
         }
+
+        // setsockopt(socketClientRequest, IPPROTO_TCP, TCP_NODELAY, (const char *)&on, sizeof(int));
         // Connect to socket
         if (connect(socketClientRequest, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
             perror("simplex-talk: connect");
@@ -121,18 +132,61 @@ static int sendRequest(char * request, int *port){
         len = strlen(request) + 1;
         if(send(socketClientRequest, request, len, 0) < 0){
             perror("simplex-talk: Send buffer");
-        } else{
-            printf("%s\n","Salut moi je suis connecté" );
         }
+
+        //Define FileName:
+        *filename = "efwesc";
+        //Open the file 
+        fileRet = fopen(*filename, "w");
 
         //receive data form server:
-        if(recv(socketClientRequest, buf, sizeof(buf), 0) > 0 ){
-            printf("%s\n",buf );
-
+        while(read(socketClientRequest, buf, 512 - 1) > 0){
+            //Store data to the text file:
+            fputs(buf,fileRet);
+            bzero(buf, 512);
         }
+
+        //Close the file
+        fclose(fileRet);
+        // Close the socket connection
+        close(socketClientRequest);
+
+            // 
+            // while(1){
+
+            //     while(recv(socketClientRequest, buf, sizeof(buf), 0) > 0 ){
+            //         // printf("%s\n", "Tu dois recevoir un truc ici");
+            //         // printf("%s\n", buf);
+            //         fputs(buf, stdout);
+
+            //     } 
+            //         break;
+                
+             
+
+            // }    
+             printf("%s\n", "Jai fini");
+
  
 }
+
 // Returning Data to the Client => Once the transaction is complete, the proxy should close the connection
+static int returnDataToClient(int socket, char ** filename){
+    char buf[512];
+    FILE * fp;
+    fp = fopen(*filename, "r");
+
+    while(fgets(buf, sizeof(buf), fp) != NULL){
+        printf("%s", buf );
+        if(send(socket, buf, sizeof(buf), 0) < 0){
+            perror("Error send data from proxy to client");
+        }
+        bzero(buf, 512);
+    }
+
+    fclose(fp);
+    return 1;
+}
 
 int main(int argc, const char * argv[])
 {
@@ -246,14 +300,15 @@ int main(int argc, const char * argv[])
             if (FD_ISSET(client_socket[i], &master_set)) {
               // Print message
               if(recv(client_socket[i], buf, sizeof(buf), 0) > 0 ){
-                  //fputs(buf, stdout);
-                //Start verify request by HTTP specification: 
-                
+                    //Start verify request by HTTP specification:                 
                     if( checkHttpRequest(buf)){
                         printf("%s\n", "Apero");
                         int * port;
-                        port = 8080;
-                        sendRequest(buf, port);
+                        char * filename;
+                        port = 80;
+                        sendRequest(buf, port,&filename);                
+                        returnDataToClient(client_socket[i], &filename);
+
                     } 
               } 
               //else close connection and release the client socket:
