@@ -1,3 +1,4 @@
+
 //
 //  server.c
 //  csc450-server
@@ -7,7 +8,7 @@
 //
 
 #include <stdio.h>
-#include <strings.h>
+#include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -23,7 +24,7 @@
 #define MAX_LINE 51
 
 // use US-ASCII space (32):
-const char *sp = '\x20';
+const char *sp = "\x20";
 
 /* 
 Status-Code    = "200"   ; OK
@@ -53,21 +54,89 @@ const char *request_methods[7]={
     "GET", "POST", "HEAD", 
     "PUT", "DELETE", "LINK", "UNLINK"};
 
+	
+/* Function inArray
+	Test if the string is in request_methods */
+
+static int inArray(char * myString)
+{
+	int i=0;
+	int res=0;
+	for (i;i<7;i++)
+	{
+		int result = strncmp(myString,request_methods[i],7);
+		if(result == 0)
+		{
+			res=1;
+		}
+	}
+	return res;
+}
+
+/* Function versionHTTP
+	Get the HTTP version from a string */
+	
+static float versionHTTP(char * myString)
+{
+	int i=0;
+	int j=0;
+	int res=0;
+	int res1;
+	int res2;
+	char *http="HTTP/";
+	char comp[5];
+	char version[3];
+	float httpVersion;
+	for(i;i<5;i++)
+	{
+		comp[i]=myString[i];
+	}
+	for(j;j<3;j++)
+	{
+		version[j]=myString[j+5];
+	}
+	int result = strncmp(comp,http,5);
+	if(result == 0)
+	{
+		res1 = strcmp(version,"1.0");
+		res2 = strcmp(version,"0.9");
+		
+		if((res1 == 0) || (res2 == 0))
+		{
+			res=1;
+		}
+	}
+	return res;
+}
 
 /* Refers to RFC 1945 5. Request (page 22)
 *  Method + URI + HTTP-Version
 */
-static int checkHttpRequest(char * requestLine){
-    // char *token = NULL;
-
-    // printf("%s%c%s\n", "tijntijnr",sp,"eiqwune");
-    // token = strtok(requestLine, sp);
-    // printf("Current token: %s.\n", token);
-    // while (token) {
-    //     printf("Current token: %s.\n", token);
-    //     token = strtok(NULL, "\n");
-    // }
-    return 1;
+static int checkHttpRequest(char * requestLine, char ** url)
+{
+	char * pch;
+	pch = strtok (requestLine,sp);
+	char *res[3];
+	int i=0;
+	while (pch != NULL)
+	{
+		res[i]= pch;
+		pch = strtok (NULL, sp);
+		i++;
+	}
+	if(i<3)
+	{
+		status erreur = {400, "Bad Request"};
+		return 0;
+	}
+	if((inArray(res[0])) && (versionHTTP(res[2])))
+	{
+		*url = res[1];
+		return 1;
+	}
+	status erreur = {400, "Bad Request"};
+	// printf("%d %s", erreur.code, erreur.reason);
+	return 0;
 }
 
 /*http_URL       = "http:" "//" host [ ":" port ] [ abs_path ]
@@ -79,8 +148,104 @@ static int checkHttpRequest(char * requestLine){
        port           = *DIGIT  */
 // Parsing URL => Get the requested host and port, and the requested path.
 
-static int parseUrl(char * request, char * host, int * port){
+static int parseUrl(char * request, char * host, int * port, int * path)
+{
+	int i = 0;
+	int j = 0;
+	int res =0;
+	char *http= "http://";
+	char comp[7];
+	int lastColumn;
+	int firstSlash;
+	for (i;i<7;i++)
+	{
+		comp[i]=request[i];
+	}
+	int result = strncmp(http,comp,7);
+	if(result == 0)
+	{
+		// We remove the http://
+		for(j;j<strlen(request)-7;j++)
+		{
+			request[j]=request[j+7];
+		}
+		request[j]='\0';
+	}
+		
+		if(strrchr(request, ':')!= NULL) // If there is a port
+		{	
+		// We get the position of the last column in the string which is the limit between host and port
+			lastColumn = strrchr(request, ':') - request ;
+			// We parse the host 
+			strncpy(host, request, lastColumn);
+			
+			//We remove the host and the column
+			j=0;
+			int lengthHost = strlen(host)+1;
+			for(j;j<strlen(request)-lengthHost;j++)
+			{
+				//printf("%d\n",j);
+				request[j]=request[j+lengthHost];
+			}
+			request[j]='\0';
+			
+			if(strrchr(request, '/') != NULL) // If there is a path
+			{
+				// We get the position of the first slash in the string which is the limit between port and path
+				firstSlash = strchr(request, '/') - request;
 
+				// We parse the port
+				strncpy(port, request, firstSlash);
+				
+				//We remove the port
+				j=0;
+				int lengthPort = strlen(port);	
+				for(j;j<strlen(request)-lengthPort;j++)
+				{
+					request[j]=request[j+lengthPort];
+				}
+				request[j]='\0';
+				
+				strcpy(path, request);
+				res = 1;
+			}
+			else // If there is no path
+			{
+				strncpy(port, request, strlen(request));
+				path = "/";
+				res = 1;
+			}
+		}
+		else // If there is no port
+		{
+			if(strchr(request, '/') != NULL) //If there is a path
+			{
+				firstSlash = strchr(request,'/') - request;
+				// We parse the host
+				strncpy(host, request, firstSlash);
+				strcpy(path,"80");
+				
+				// We remove the host
+				j=0;
+				int lengthHost = strlen(host);
+				for(j;j<strlen(request)-lengthHost;j++)
+				{
+					request[j]=request[j+lengthHost];
+				}
+				request[j]='\0';
+				
+				strcpy(path, request);
+				res = 1;
+			}
+			else
+			{
+				strcpy(host, request);
+				strcpy(port,"80");
+				strcpy(path,"/");
+				res = 1;
+			}
+		}
+	return res;
 }
 // Getting Data from the Remote Server => Connection to host port 80 by default  + send a HTTP request for the appropriate file.
 static int sendRequest(char * request, int *port){
@@ -248,12 +413,16 @@ int main(int argc, const char * argv[])
               if(recv(client_socket[i], buf, sizeof(buf), 0) > 0 ){
                   //fputs(buf, stdout);
                 //Start verify request by HTTP specification: 
-                
-                    if( checkHttpRequest(buf)){
-                        printf("%s\n", "Apero");
-                        int * port;
-                        port = 8080;
-                        sendRequest(buf, port);
+					char * url;
+                    if( checkHttpRequest(buf,& url)){
+					char * host = malloc(strlen(url)*sizeof(char));
+					char * port = malloc(5*sizeof(char));
+					char * path = malloc(strlen(url)*sizeof(char));
+                       if(parseUrl(url, host, port, path))
+					   {
+							printf("%s\n%s\n%s\n", host, port, path);
+					   }
+                        // sendRequest(buf, port);
                     } 
               } 
               //else close connection and release the client socket:
