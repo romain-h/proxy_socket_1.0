@@ -149,7 +149,7 @@ static int checkHttpRequest(char * requestLine, char ** url)
        port           = *DIGIT  */
 // Parsing URL => Get the requested host and port, and the requested path.
 
-static int parseUrl(char * request, char * host, int * port, int * path)
+static int parseUrl(char * request, char * host, char * port, char * path)
 {
 	int i = 0;
 	int j = 0;
