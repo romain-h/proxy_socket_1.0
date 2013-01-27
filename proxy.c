@@ -119,7 +119,7 @@ static int checkHttpRequest(char * requestLine, char ** url)
 	pch = strtok (requestLine,sp);
 	char *res[3];
 	int i=0;
-	while (pch != NULL)
+	while ((pch != NULL)&&(i<3))
 	{
 		res[i]= pch;
 		pch = strtok (NULL, sp);
@@ -479,7 +479,6 @@ int main(int argc, const char * argv[])
             if (FD_ISSET(client_socket[i], &master_set)) {
               // Print message
               if(recv(client_socket[i], buf, sizeof(buf), 0) > 0 ){
-
                     char * url;
                     //Start verify request by HTTP specification:                 
                     if( checkHttpRequest(buf,& url)){
