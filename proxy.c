@@ -260,20 +260,12 @@ static int sendRequest(char * host, char * port, char * path, char ** filename){
         FILE * fileRet;
         char * request = malloc(500*sizeof(char));
 
-        // request = "GET\x20/\x20HTTP/1.0\r\n\r\n";
-        // path = "/";
-        // host = "hrdy.me";
-        // port = "80";
-
         // request = "GET / HTTP/1.0\r\nUser-Agent: curl/7.21.4 (universal-apple-darwin11.0) libcurl/7.2.4 OpenSSL/0.9.8r zlib/1.2.5\nHost: hrdy.me\nAccept: */*\r\n\r\n";
-        // request = "GET / HTTP/1.0\nHost: google.com\r\n\r\n";
+        // request = "GET / HTTP/1.0\nHost: hrdy.me\r\n\r\n";
             strcpy(request, "GET ");            
             strcat(request, path);
-            strcat(request, " HTTP/1.0");
-
-            printf("%s\n",  request);
-
-            
+            strcat(request, " HTTP/1.0\r\n\r\n");
+            printf("%s\n",  request);            
 
         /* translate host name into peer’s IP address */
         hp = gethostbyname(host);
@@ -305,11 +297,9 @@ static int sendRequest(char * host, char * port, char * path, char ** filename){
         }
 
         // send request to server
-        len = strlen(request) + 1;
+        len = strlen(request) +1;
         if(send(socketClientRequest, request, len, 0) < 0){
             perror("simplex-talk: Send buffer");
-        }else{
-            printf("%s\n","Moi j'ai envoyé ta foutue request c'est plus mon probleme...." );
         }
 
         //Define FileName:
@@ -489,7 +479,7 @@ int main(int argc, const char * argv[])
             if (FD_ISSET(client_socket[i], &master_set)) {
               // Print message
               if(recv(client_socket[i], buf, sizeof(buf), 0) > 0 ){
-                
+
                     char * url;
                     //Start verify request by HTTP specification:                 
                     if( checkHttpRequest(buf,& url)){
