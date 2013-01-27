@@ -96,11 +96,12 @@ static int sendRequest(char * request, int *port, char ** filename){
         // request = "GET\x20/\x20HTTP/1.0\r\n\r\n";
 
 
-        request = "GET / HTTP/1.1\r\nUser-Agent: curl/7.21.4 (universal-apple-darwin11.0) libcurl/7.2.4 OpenSSL/0.9.8r zlib/1.2.5\nHost: hrdy.me\nAccept: */*\r\n\r\n";
+        // request = "GET / HTTP/1.0\r\nUser-Agent: curl/7.21.4 (universal-apple-darwin11.0) libcurl/7.2.4 OpenSSL/0.9.8r zlib/1.2.5\nHost: hrdy.me\nAccept: */*\r\n\r\n";
+        request = "GET / HTTP/1.0\nHost: google.com\r\n\r\n";
 
 
         /* translate host name into peer’s IP address */
-        hp = gethostbyname("hrdy.me");
+        hp = gethostbyname("google.com");
         if (!hp) {
             fprintf(stderr, "simplex-talk: unknown host: %s\n", "google");
             exit(1);
@@ -135,15 +136,26 @@ static int sendRequest(char * request, int *port, char ** filename){
         }
 
         //Define FileName:
-        *filename = "efwesc";
+        *filename = "content.txt";
         //Open the file 
         fileRet = fopen(*filename, "w");
 
         //receive data form server:
-        while(read(socketClientRequest, buf, 512 - 1) > 0){
+        int recv_size;
+        // while(read(socketClientRequest, buf, 512 - 1) > 0){
+        //     //Store data to the text file:
+        //     fputs(buf,fileRet);
+        //     bzero(buf, 512);
+        // }
+
+        while(recv_size = recv(socketClientRequest, buf, 512,0) > 0 ){
+            printf("%s%d\n", "JAI RECU :::::::::::::::",recv_size);
             //Store data to the text file:
             fputs(buf,fileRet);
             bzero(buf, 512);
+            // if(recv_size < 512){
+            //     break;
+            // }            
         }
 
         //Close the file
@@ -177,7 +189,7 @@ static int returnDataToClient(int socket, char ** filename){
     fp = fopen(*filename, "r");
 
     while(fgets(buf, sizeof(buf), fp) != NULL){
-        printf("%s", buf );
+        // printf("%s", buf );
         if(send(socket, buf, sizeof(buf), 0) < 0){
             perror("Error send data from proxy to client");
         }
@@ -306,8 +318,44 @@ int main(int argc, const char * argv[])
                         int * port;
                         char * filename;
                         port = 80;
-                        sendRequest(buf, port,&filename);                
-                        returnDataToClient(client_socket[i], &filename);
+                        sendRequest(buf, port,&filename);  
+                        returnDataToClient(client_socket[i],&filename); 
+
+                        // char bufRet[512];
+                        // FILE * fp;
+                        // fp = fopen("filename", "r");
+
+                        // while(fgets(bufRet, sizeof(bufRet), fp)){
+                        //      // printf("%x", buf );
+                        // // int n = 0;
+                        // // char c;
+
+                        //     // do {
+                        //     //   n++;  
+                        //     //   c = fgetc (fp);
+                        //     //   printf("%c\n",c );
+                        //     //   if(n<511){
+                        //     //     // buf[n] = c;
+                        //     //     strcat(c, buf);
+                        //     //   } else{
+                        //     //     n = 0;
+                        //         if(send(client_socket[i], bufRet, sizeof(bufRet), 0) < 0){
+                        //             perror("Error send data from proxy to client");
+                        //         }
+                        //         // bzero(bufRet, 512);
+                        //         // }
+
+                              
+                              
+                        //     // } while (c != EOF);
+                        
+                            
+                        //     bzero(bufRet, 512);
+                        // }
+
+                        // fclose(fp);
+                      
+                    
 
                     } 
               } 
@@ -322,4 +370,6 @@ int main(int argc, const char * argv[])
         
     return 0;
 }
+
+
 
