@@ -22,7 +22,7 @@
 
 #define MAX_PENDING 4
 #define MAX_CLIENTS_SIM 10 
-#define MAX_LINE 51
+#define MAX_LINE 512
 
 // use US-ASCII space (32):
 const char *sp = "\x20";
@@ -373,6 +373,8 @@ int main(int argc, const char * argv[])
     const char* port;
     struct sockaddr_in sckin;
     char buf[MAX_LINE];
+	char request = malloc(MAX_LINE;
+	int current_size = MAX_LINE;
     int len, i;
     socklen_t clilen;
     int main_socket, new_s, new_conns;
@@ -478,24 +480,35 @@ int main(int argc, const char * argv[])
             // Check the current file descriptor
             if (FD_ISSET(client_socket[i], &master_set)) {
               // Print message
-              if(recv(client_socket[i], buf, sizeof(buf), 0) > 0 ){
-                    char * url;
-                    //Start verify request by HTTP specification:                 
-                    if( checkHttpRequest(buf,& url)){
-                        char * host = malloc(strlen(url)*sizeof(char));
-                        char * port = malloc(5*sizeof(char));
-                        char * path = malloc(strlen(url)*sizeof(char));
-                       if(parseUrl(url, host, port, path))
-                       {
-                            printf("%s\n%s\n%s\n", host, port, path);
+              if(recv(client_socket[i], buf, sizeof(buf), 0) > 0 )
+			  {
+					strcpy(request, buf); // Ne concatene pas
+					if(strstr(request, "\r\n\r\n")!=NULL)
+					{
+						char * url;
+						//Start verify request by HTTP specification
+								:                 
+						if( checkHttpRequest(request,& url))
+						{
+							char * host = malloc(strlen(url)*sizeof(char));
+							char * port = malloc(5*sizeof(char));
+							char * path = malloc(strlen(url)*sizeof(char));
+						   if(parseUrl(url, host, port, path))
+						   {
+								printf("%s\n%s\n%s\n", host, port, path);
 
-                            
-                            char * filename;
-                            
-                            sendRequest(host, port, path, &filename);  
-                            returnDataToClient(client_socket[i],&filename); 
-                       }
-                   }
+								char * filename;
+								
+								sendRequest(host, port, path, &filename);  
+								returnDataToClient(client_socket[i],&filename); 
+						   }
+					   }
+					}
+					else
+					{
+						current_size = current_size + MAX_LINE;
+						realloc(request, current_size);
+					}
 
 
                         // char bufRet[512];
