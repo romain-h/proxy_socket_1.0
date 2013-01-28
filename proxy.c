@@ -61,13 +61,14 @@ static int versionHTTP(char * myString);
 static int processRequest(int socket);
 static int checkHttpRequest(char * requestLine, char ** url, char ** method);
 static int parseUrl(char * request, char * host, char * port, char * path);
-static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi, char * method);
+static int sendRequest(char * method, char * host, char * port, char * path, char ** filename, char * requestORi, char * headerFields);
 static int returnDataToClient(int socket, char ** filename);
 /* Function inArray
 	Test if the string is in request_methods */
 
 static int inArray(char * myString)
 {
+    printf("%s\n", "Enter inArray....." );
 	int i=0;
 	int res=0;
 	for (i;i<7;i++)
@@ -86,6 +87,7 @@ static int inArray(char * myString)
 	
 static int versionHTTP(char * myString)
 {
+    printf("%s\n", "Enter versionHTTP....." );
 	int i=0;
 	int j=0;
 	int res=0;
@@ -122,6 +124,7 @@ static int versionHTTP(char * myString)
 	return res;
 }
 static int processRequest(int socket){
+    printf("%s\n", "Enter processRequest....." );
     char *buf = malloc(BUF_SIZE_RECV * sizeof(char));
     size_t request_size = BUF_SIZE_RECV;
     char * request = malloc(request_size * sizeof(char));
@@ -154,6 +157,8 @@ static int processRequest(int socket){
     char * pch;
     char * requestFirstLine = malloc(strlen(request)*sizeof(char));
     char * headerFields = malloc(strlen(request)*sizeof(char));
+    bzero(headerFields, sizeof(headerFields));
+
     int i = 0;
     pch = strtok (request,"\r\n");
     while(pch != NULL){
@@ -174,11 +179,11 @@ static int processRequest(int socket){
         i++;
 
     }
-	// If there is no option, we replace it with a space
-	if(strcmp(headerFields,"\r\n")==0)
-	{
-		headerFields = " ";
-	}
+	// // If there is no option, we replace it with a space
+	// if(strcmp(headerFields,"\r\n")==0)
+	// {
+	// 	headerFields = "\r\n";
+	// }
 	
 	
 
@@ -186,13 +191,15 @@ static int processRequest(int socket){
         char * host = malloc(strlen(url)*sizeof(char));
         char * port = malloc(5*sizeof(char));
         char * path = malloc(strlen(url)*sizeof(char));
+        bzero(host, sizeof(host));
+        printf("%s%s\n", "URL ::", url );
        if(parseUrl(url, host, port, path))
        {
             printf("%s\n%s\n%s\n", host, port, path);
 
             char * filename;
             
-            sendRequest(host, port, path, &filename, request, method);  
+            sendRequest(method, host, port, path, &filename, request, headerFields);  
             returnDataToClient(socket,&filename); 
        }
    } else{
@@ -205,6 +212,7 @@ static int processRequest(int socket){
 */
 static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 {
+    printf("%s\n", "Enter checkHttpRequest....." );
     printf("%s\n", requestLine);
 	char * pch;
 	pch = strtok (requestLine,sp);
@@ -245,13 +253,14 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 
 static int parseUrl(char * request, char * host, char * port, char * path)
 {
+    printf("%s\n", "Enter parrseUrl....." );
 	int i = 0;
 	int j = 0;
 	int res =0;
 	char *http= "http://";
 	char comp[7];
-	int lastColumn;
-	int firstSlash;
+	unsigned int lastColumn;
+	unsigned int firstSlash;
 	for (i;i<7;i++)
 	{
 		comp[i]=request[i];
@@ -259,6 +268,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 	int result = strncmp(http,comp,7);
 	if(result == 0)
 	{
+        printf("%s\n", "C'est egal je vire");
 		// We remove the http://
 		for(j;j<strlen(request)-7;j++)
 		{
@@ -269,10 +279,12 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 		
 		if(strrchr(request, ':')!= NULL) // If there is a port
 		{	
+            printf("%s\n","Test de port" );
 		// We get the position of the last column in the string which is the limit between host and port
 			lastColumn = strrchr(request, ':') - request ;
 			// We parse the host 
 			strncpy(host, request, lastColumn);
+            host[lastColumn] = '\0';
 			
 			//We remove the host and the column
 			j=0;
@@ -286,11 +298,13 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 			
 			if(strrchr(request, '/') != NULL) // If there is a path
 			{
+                printf("%s\n", "j'ai un de path");
 				// We get the position of the first slash in the string which is the limit between port and path
 				firstSlash = strchr(request, '/') - request;
 
 				// We parse the port
 				strncpy(port, request, firstSlash);
+                port[firstSlash] = '\0';
 				
 				//We remove the port
 				j=0;
@@ -306,34 +320,49 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 			}
 			else // If there is no path
 			{
+                printf("%s\n", "Déso mais j'ai pas de path");
 				strncpy(port, request, strlen(request));
+                port[strlen(request)] = '\0';
 				path = "/";
 				res = 1;
 			}
 		}
 		else // If there is no port
 		{
+            printf("%s\n", "J'ai pas de port");
 			if(strchr(request, '/') != NULL) //If there is a path
 			{
+                printf("%s\n", "J'ai un path");
 				firstSlash = strchr(request,'/') - request;
+                printf("%s%d\n","Position du /", firstSlash );
 				// We parse the host
+                printf("%s%s\n","Old  ", request );
+                // host = (char *) realloc(host,sizeof(char)*firstSlash);
+                // bzero(host, sizeof(host));
+                printf("%s\n", host);
+                printf("%s%d\n","size of host:::", strlen(host) );
 				strncpy(host, request, firstSlash);
+                host[firstSlash]='\0';
 				strcpy(port,"80");
 				
 				// We remove the host
 				j=0;
 				int lengthHost = strlen(host);
-				for(j;j<strlen(request)-lengthHost;j++)
+                int tmp = strlen(request)-lengthHost;
+                printf("%s%s\n", "host:::", host );
+                printf("%s%d\n","length", lengthHost );
+				for(j;j<tmp;j++)
 				{
 					request[j]=request[j+lengthHost];
 				}
 				request[j]='\0';
-				
+				printf("%s%s\n","Nouveau Path", request );
 				strcpy(path, request);
 				res = 1;
 			}
 			else
 			{
+                printf("%s\n","J'ai pas de path" );
 				strcpy(host, request);
 				strcpy(port,"80");
 				strcpy(path,"/");
@@ -343,8 +372,8 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 	return res;
 }
 // Getting Data from the Remote Server => Connection to host port 80 by default  + send a HTTP request for the appropriate file.
-static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi, char * method){
-
+static int sendRequest(char * method, char * host, char * port, char * path, char ** filename, char * requestORi, char * headerFields){
+    printf("%s\n", "Enter sendRequest....." );
         struct hostent *hp;
         struct sockaddr_in sin;
         int socketClientRequest;
@@ -358,8 +387,12 @@ static int sendRequest(char * host, char * port, char * path, char ** filename, 
         // request = "GET / HTTP/1.0\nHost: hrdy.me\r\n\r\n";
             strcpy(request, method);       
 			strcat(request, " ");
+            // strcat(request, host);
             strcat(request, path);
-            strcat(request, " HTTP/1.0\r\n\r\n");
+            strcat(request, " HTTP/1.0\r\n");
+            strcat(request, headerFields);
+            strcat(request, "\r\n");
+            
             printf("\nSEND REQUEST\n%s\n",  request);            
 
             // request = requestORi;
@@ -396,6 +429,8 @@ static int sendRequest(char * host, char * port, char * path, char ** filename, 
         len = strlen(request) +1;
         if(send(socketClientRequest, request, len, 0) < 0){
             perror("simplex-talk: Send buffer");
+        } else{
+            printf("%s\n", "J'ai envoyeß");
         }
 
         //Define FileName:
@@ -442,6 +477,7 @@ static int sendRequest(char * host, char * port, char * path, char ** filename, 
 // Returning Data to the Client => Once the transaction is complete, the proxy should close the connection
 static int returnDataToClient(int socket, char ** filename){
     char buf[512];
+    bzero(buf, sizeof(buf));
     FILE * fp;
     fp = fopen(*filename, "r");
 
@@ -450,7 +486,7 @@ static int returnDataToClient(int socket, char ** filename){
         if(send(socket, buf, sizeof(buf), 0) < 0){
             perror("Error send data from proxy to client");
         }
-        bzero(buf, 512);
+        bzero(buf, sizeof(buf));
     }
 
     fclose(fp);
