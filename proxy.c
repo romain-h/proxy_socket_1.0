@@ -23,6 +23,7 @@
 #define MAX_PENDING 4
 #define MAX_CLIENTS_SIM 10 
 #define MAX_LINE 512
+#define BUF_SIZE_RECV 124
 
 // use US-ASCII space (32):
 const char *sp = "\x20";
@@ -55,7 +56,13 @@ const char *request_methods[7]={
     "GET", "POST", "HEAD", 
     "PUT", "DELETE", "LINK", "UNLINK"};
 
-	
+static int inArray(char * myString);
+static float versionHTTP(char * myString);
+static int processRequest(int socket);
+static int checkHttpRequest(char * requestLine, char ** url);
+static int parseUrl(char * request, char * host, char * port, char * path);
+static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi);
+static int returnDataToClient(int socket, char ** filename);
 /* Function inArray
 	Test if the string is in request_methods */
 
@@ -82,8 +89,7 @@ static float versionHTTP(char * myString)
 	int i=0;
 	int j=0;
 	int res=0;
-	int res1;
-	int res2;
+	int res1, res2, res3;
 	char *http="HTTP/";
 	char comp[5];
 	char version[3];
@@ -101,20 +107,87 @@ static float versionHTTP(char * myString)
 	{
 		res1 = strcmp(version,"1.0");
 		res2 = strcmp(version,"0.9");
+        res3 = strcmp(version,"1.1");
 		
-		if((res1 == 0) || (res2 == 0))
+		if((res1 == 0) || (res2 == 0) || (res3 == 0))
 		{
 			res=1;
 		}
 	}
 	return res;
 }
+static int processRequest(int socket){
+    char *buf = malloc(BUF_SIZE_RECV * sizeof(char));
+    size_t request_size = BUF_SIZE_RECV;
+    char * request = malloc(request_size * sizeof(char));
+    char * request_buff = malloc(request_size * sizeof(char));
 
+    int received, available=BUF_SIZE_RECV;
+    char * url;
+
+    // receive request from client on current socket:
+    while ( (received = recv(socket, buf, available, 0) > 0)){
+
+        //Keep actual content of request:
+        request_buff = realloc(request_buff, request_size);
+        strcpy(request_buff, request);  
+        //Realloc double of memory of final request:
+        request_size *= 2;  
+        request = realloc(request, request_size);
+        strcpy(request, request_buff);                     
+        strcat(request, buf);
+        bzero(buf, BUF_SIZE_RECV);
+    
+        // Detect end of request:
+        if((strstr(request,"\r\n\r\n")!=NULL) || (strstr(request, "\n\n")!=NULL)) 
+            break;  
+    }
+
+    //Start verify request by HTTP specifications
+    // To do that we need to separate orginal request line and options:
+    char * pch;
+    char * requestFirstLine;
+    char * headerFields;
+    int i = 0;
+    pch = strtok (request,"\r\n");
+    while((pch != NULL) && (i < 2)){
+        if(i==0){
+            requestFirstLine = pch;
+        } else{
+            headerFields = pch;
+        }
+        i++;
+
+    }
+    printf("%s%s\n", "FL",requestFirstLine );
+    printf("%s%s\n", "option",headerFields );
+
+
+    if( checkHttpRequest(requestFirstLine,& url)) {
+
+        char * host = malloc(strlen(url)*sizeof(char));
+        char * port = malloc(5*sizeof(char));
+        char * path = malloc(strlen(url)*sizeof(char));
+       if(parseUrl(url, host, port, path))
+       {
+            printf("%s\n%s\n%s\n", host, port, path);
+
+            char * filename;
+            
+            sendRequest(host, port, path, &filename, request);  
+            returnDataToClient(socket,&filename); 
+       }
+   } else{
+    printf("%s\n",  "Deso");
+   }             
+
+}
 /* Refers to RFC 1945 5. Request (page 22)
 *  Method + URI + HTTP-Version
 */
 static int checkHttpRequest(char * requestLine, char ** url)
 {
+    printf("%s\n", requestLine);
 	char * pch;
 	pch = strtok (requestLine,sp);
 	char *res[3];
@@ -122,6 +195,7 @@ static int checkHttpRequest(char * requestLine, char ** url)
 	while ((pch != NULL)&&(i<3))
 	{
 		res[i]= pch;
+        // printf("%s%s\n","RES", res[i] );
 		pch = strtok (NULL, sp);
 		i++;
 	}
@@ -249,7 +323,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 	return res;
 }
 // Getting Data from the Remote Server => Connection to host port 80 by default  + send a HTTP request for the appropriate file.
-static int sendRequest(char * host, char * port, char * path, char ** filename){
+static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi){
 
         struct hostent *hp;
         struct sockaddr_in sin;
@@ -267,6 +341,7 @@ static int sendRequest(char * host, char * port, char * path, char ** filename){
             strcat(request, " HTTP/1.0\r\n\r\n");
             printf("%s\n",  request);            
 
+            request = requestORi;
         /* translate host name into peer’s IP address */
         hp = gethostbyname(host);
         if (!hp) {
@@ -309,12 +384,6 @@ static int sendRequest(char * host, char * port, char * path, char ** filename){
 
         //receive data form server:
         int recv_size;
-        // while(read(socketClientRequest, buf, 512 - 1) > 0){
-        //     //Store data to the text file:
-        //     fputs(buf,fileRet);
-        //     bzero(buf, 512);
-        // }
-
         while(recv_size = recv(socketClientRequest, buf, 512,0) > 0 ){
             printf("%s%d\n", "JAI RECU :::::::::::::::",recv_size);
             //Store data to the text file:
@@ -372,8 +441,8 @@ int main(int argc, const char * argv[])
     int opt=1;
     const char* port;
     struct sockaddr_in sckin;
-    char buf[MAX_LINE];
-	char request = malloc(MAX_LINE;
+    
+	// char request = malloc(MAX_LINE;
 	int current_size = MAX_LINE;
     int len, i;
     socklen_t clilen;
@@ -394,7 +463,7 @@ int main(int argc, const char * argv[])
         port = argv[1];
     }
     else {
-        perror("usage: simplex-talk port\n");
+        perror("usage: Please specify a port as argument\n");
         exit(1);
     }
     
@@ -403,12 +472,11 @@ int main(int argc, const char * argv[])
     bzero((char *)&sckin, sizeof(sckin));
     sckin.sin_family = AF_INET;
     sckin.sin_addr.s_addr = INADDR_ANY;
-    // inet_pton(AF_INET, "127.0.0.1", &sckin.sin_addr);
     sckin.sin_port = htons(atoi(port));
 
-    /* setup passive open */
+    /*  We need to open a socket on TCP to handle HTTP requests. */
     if ((main_socket = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("simplex-talk: socket");
+        perror("simplex-talk: Error socket creation");
         exit(1);
     }
     
@@ -431,132 +499,78 @@ int main(int argc, const char * argv[])
 
     // Get length
     clilen = sizeof(sckin);
-    
-    
-    while(1){
-        
-        // Set up file descriptor for the main socket
-        FD_ZERO(&master_set);
-        
-        /* specify socket to listen for new connections */
-        FD_SET(main_socket, &master_set);
-        // Initialize file descriptor for all clients
-        for (i=0; i<max_clients; i++) {
-            if (client_socket[i] > 0) {
-                FD_SET(client_socket[i], &master_set);
-            }
-        }
-        
-        
-        /* wait for connection, without timeout */
-        new_conns = select(max_clients+3, &master_set, NULL, NULL, NULL);
-        if(new_conns < 0){
-            perror("simplex-talk: select");
+
+    /* wait for connection, then receive and print text */
+    while(1) {
+        if ((new_s = accept(main_socket, (struct sockaddr *)&sckin, &len)) < 0) {
+            perror("simplex-talk: accept");
             exit(1);
         }
-        // Main socket used : New client want to set up a connection
-        if (FD_ISSET(main_socket, &master_set)) {
-            /* Open the new socket as 'new_socket' */
-            if((new_s = accept(main_socket, (struct sockaddr *) &sckin, &clilen )) < 0){
-                perror("Error: Accept");
-                exit(1);
-            }
-            
-            /* add new socket to list of sockets */
-            for (i=0; i<max_clients; i++) {
-                //Check if this client socket is empty and so available
-                if (client_socket[i] == 0) {
-                    // Add the new socket so the client list
-                    client_socket[i] = new_s;
-                    // leave the loop
-                    i = max_clients;
-                }
-            }
-            
-        }
-        
-        // Check all current client in the queue to see if they want to do IO 
-        for (i = 0; i < max_clients; i++){
-            // Check the current file descriptor
-            if (FD_ISSET(client_socket[i], &master_set)) {
-              // Print message
-              if(recv(client_socket[i], buf, sizeof(buf), 0) > 0 )
-			  {
-					strcpy(request, buf); // Ne concatene pas
-					if(strstr(request, "\r\n\r\n")!=NULL)
-					{
-						char * url;
-						//Start verify request by HTTP specification
-								:                 
-						if( checkHttpRequest(request,& url))
-						{
-							char * host = malloc(strlen(url)*sizeof(char));
-							char * port = malloc(5*sizeof(char));
-							char * path = malloc(strlen(url)*sizeof(char));
-						   if(parseUrl(url, host, port, path))
-						   {
-								printf("%s\n%s\n%s\n", host, port, path);
-
-								char * filename;
-								
-								sendRequest(host, port, path, &filename);  
-								returnDataToClient(client_socket[i],&filename); 
-						   }
-					   }
-					}
-					else
-					{
-						current_size = current_size + MAX_LINE;
-						realloc(request, current_size);
-					}
-
-
-                        // char bufRet[512];
-                        // FILE * fp;
-                        // fp = fopen("filename", "r");
-
-                        // while(fgets(bufRet, sizeof(bufRet), fp)){
-                        //      // printf("%x", buf );
-                        // // int n = 0;
-                        // // char c;
-
-                        //     // do {
-                        //     //   n++;  
-                        //     //   c = fgetc (fp);
-                        //     //   printf("%c\n",c );
-                        //     //   if(n<511){
-                        //     //     // buf[n] = c;
-                        //     //     strcat(c, buf);
-                        //     //   } else{
-                        //     //     n = 0;
-                        //         if(send(client_socket[i], bufRet, sizeof(bufRet), 0) < 0){
-                        //             perror("Error send data from proxy to client");
-                        //         }
-                        //         // bzero(bufRet, 512);
-                        //         // }
-
-                              
-                              
-                        //     // } while (c != EOF);
-                        
-                            
-                        //     bzero(bufRet, 512);
-                        // }
-
-                        // fclose(fp);
-                      
-                    
-
-
-              } 
-              //else close connection and release the client socket:
-              else{
-                  close(client_socket[i]);
-                  client_socket[i] = 0;
-              }
-            }            
-        } 
+        processRequest(new_s);
     }
+    
+    
+    // while(1){
+        
+    //     // Set up file descriptor for the main socket
+    //     FD_ZERO(&master_set);
+        
+    //     /* specify socket to listen for new connections */
+    //     FD_SET(main_socket, &master_set);
+    //     // Initialize file descriptor for all clients
+    //     for (i=0; i<max_clients; i++) {
+    //         if (client_socket[i] > 0) {
+    //             FD_SET(client_socket[i], &master_set);
+    //         }
+    //     }
+        
+        
+    //     /* wait for connection, without timeout */
+    //     new_conns = select(max_clients+3, &master_set, NULL, NULL, NULL);
+    //     if(new_conns < 0){
+    //         perror("simplex-talk: select");
+    //         exit(1);
+    //     }
+    //     // Main socket used : New client want to set up a connection
+    //     if (FD_ISSET(main_socket, &master_set)) {
+    //         /* Open the new socket as 'new_socket' */
+    //         if((new_s = accept(main_socket, (struct sockaddr *) &sckin, &clilen )) < 0){
+    //             perror("Error: Accept");
+    //             exit(1);
+    //         }
+            
+    //         /* add new socket to list of sockets */
+    //         for (i=0; i<max_clients; i++) {
+    //             //Check if this client socket is empty and so available
+    //             if (client_socket[i] == 0) {
+    //                 // Add the new socket so the client list
+    //                 client_socket[i] = new_s;
+    //                 // leave the loop
+    //                 i = max_clients;
+    //             }
+    //         }
+            
+    //     }
+        
+    //     // Check all current client in the queue to see if they want to do IO 
+    //     for (i = 0; i < max_clients; i++){
+    //         // Check the current file descriptor
+    //         if (FD_ISSET(client_socket[i], &master_set)) {
+    //             // Process Request:
+    //             processRequest(client_socket[i]);
+
+
+
+
+              
+    //           //else close connection and release the client socket:
+    //           else{
+    //               close(client_socket[i]);
+    //               client_socket[i] = 0;
+    //           }
+    //         }            
+    //     } 
+    // }
         
     return 0;
 }
