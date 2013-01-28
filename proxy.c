@@ -88,15 +88,19 @@ static int inArray(char * myString)
 static int versionHTTP(char * myString)
 {
     printf("%s\n", "Enter versionHTTP....." );
+    printf("%s\n", myString );
 	int i=0;
 	int j=0;
 	int res=0;
 	int res1, res2, res3;
 	char *http="HTTP/";
 	char *pch;
-	char comp[5];
-	char version[3];
-	float httpVersion;
+	char *comp = malloc(5*sizeof(char));
+    bzero(comp,sizeof(comp));
+	char *version = malloc(3*sizeof(char));
+    bzero(version,sizeof(version));
+	
+
 	for(i;i<5;i++)
 	{
 		comp[i]=myString[i];
@@ -105,6 +109,7 @@ static int versionHTTP(char * myString)
 	if(result == 0)
 	{
 		pch=strchr(myString,'/');
+        printf("%s%s\n", "NEW STRING", myString);
 		i=0;
 		j = pch - myString+1;
 		for(j;j<strlen(myString);j++)
@@ -112,6 +117,7 @@ static int versionHTTP(char * myString)
 			version[i]= myString[j];
 			i++;
 		}
+        printf("%s%s\n", "VERSION ::::", version );
 		res1 = strcmp(version,"1.0");
 		res2 = strcmp(version,"0.9");
         res3 = strcmp(version,"1.1");
@@ -126,9 +132,12 @@ static int versionHTTP(char * myString)
 static int processRequest(int socket){
     printf("%s\n", "Enter processRequest....." );
     char *buf = malloc(BUF_SIZE_RECV * sizeof(char));
+    bzero(buf,sizeof(buf));
     size_t request_size = BUF_SIZE_RECV;
     char * request = malloc(request_size * sizeof(char));
+    bzero(request,sizeof(request));
     char * request_buff = malloc(request_size * sizeof(char));
+    bzero(request_buff,sizeof(request_buff));
 
     int received, available=BUF_SIZE_RECV;
     char * url;
@@ -139,6 +148,7 @@ static int processRequest(int socket){
 
         //Keep actual content of request:
         request_buff = realloc(request_buff, request_size);
+        bzero(request_buff,sizeof(request_buff));
         strcpy(request_buff, request);  
         //Realloc double of memory of final request:
         request_size *= 2;  
@@ -152,11 +162,13 @@ static int processRequest(int socket){
             break;  
     }
 
+    printf("%s%s\n", "Initial request ", request );
     //Start verify request by HTTP specifications
     // To do that we need to separate orginal request line and options:
     char * pch;
     char * requestFirstLine = malloc(strlen(request)*sizeof(char));
     char * headerFields = malloc(strlen(request)*sizeof(char));
+    bzero(requestFirstLine, sizeof(requestFirstLine));
     bzero(headerFields, sizeof(headerFields));
 
     int i = 0;
@@ -189,9 +201,12 @@ static int processRequest(int socket){
 
     if( checkHttpRequest(requestFirstLine,& url, & method)) {
         char * host = malloc(strlen(url)*sizeof(char));
-        char * port = malloc(5*sizeof(char));
-        char * path = malloc(strlen(url)*sizeof(char));
         bzero(host, sizeof(host));
+        char * port = malloc(5*sizeof(char));
+        bzero(port,sizeof(port));
+        char * path = malloc(strlen(url)*sizeof(char));
+        bzero(path,sizeof(path));
+        
         printf("%s%s\n", "URL ::", url );
        if(parseUrl(url, host, port, path))
        {
@@ -200,7 +215,23 @@ static int processRequest(int socket){
             char * filename;
             
             sendRequest(method, host, port, path, &filename, request, headerFields);  
-            returnDataToClient(socket,&filename); 
+            // returnDataToClient(socket,&filename);
+            printf("%s\n", "Return Data to Client");
+    char buf[512];
+    bzero(buf, sizeof(buf));
+    FILE * fp;
+    fp = fopen(filename, "r");
+
+    while(fgets(buf, sizeof(buf), fp) != NULL){
+        // printf("%s", buf );
+        if(send(socket, buf, sizeof(buf), 0) < 0){
+            perror("Error send data from proxy to client");
+        }
+        bzero(buf, sizeof(buf));
+    }
+    printf("%s\n","Bande de con j'ai bien envoyé moi" );
+
+    fclose(fp); 
        }
    } else{
     printf("%s\n",  "Deso");
@@ -217,6 +248,7 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 	char * pch;
 	pch = strtok (requestLine,sp);
 	char *res[3];
+    bzero(res,sizeof(res));
 	int i=0;
 	while ((pch != NULL)&&(i<3))
 	{
@@ -258,7 +290,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 	int j = 0;
 	int res =0;
 	char *http= "http://";
-	char comp[7];
+	char *comp = malloc(7*sizeof(char));
 	unsigned int lastColumn;
 	unsigned int firstSlash;
 	for (i;i<7;i++)
@@ -378,10 +410,12 @@ static int sendRequest(char * method, char * host, char * port, char * path, cha
         struct sockaddr_in sin;
         int socketClientRequest;
         int on = 1;
-        char * buf[512];
+        char * buf = malloc(512*sizeof(char));
+        bzero(buf,sizeof(buf));
         int len;
         FILE * fileRet;
         char * request = malloc(500*sizeof(char));
+        bzero(request,sizeof(request));
 
         // request = "GET / HTTP/1.0\r\nUser-Agent: curl/7.21.4 (universal-apple-darwin11.0) libcurl/7.2.4 OpenSSL/0.9.8r zlib/1.2.5\nHost: hrdy.me\nAccept: */*\r\n\r\n";
         // request = "GET / HTTP/1.0\nHost: hrdy.me\r\n\r\n";
@@ -389,9 +423,9 @@ static int sendRequest(char * method, char * host, char * port, char * path, cha
 			strcat(request, " ");
             // strcat(request, host);
             strcat(request, path);
-            strcat(request, " HTTP/1.0\r\n");
-            strcat(request, headerFields);
-            strcat(request, "\r\n");
+            strcat(request, " HTTP/1.0\r\n\r\n");
+            // strcat(request, headerFields);
+            // strcat(request, "\r\n");
             
             printf("\nSEND REQUEST\n%s\n",  request);            
 
@@ -449,7 +483,6 @@ static int sendRequest(char * method, char * host, char * port, char * path, cha
             //     break;
             // }            
         }
-
         //Close the file
         fclose(fileRet);
         // Close the socket connection
@@ -476,6 +509,7 @@ static int sendRequest(char * method, char * host, char * port, char * path, cha
 
 // Returning Data to the Client => Once the transaction is complete, the proxy should close the connection
 static int returnDataToClient(int socket, char ** filename){
+    printf("%s\n", "Return Data to Client");
     char buf[512];
     bzero(buf, sizeof(buf));
     FILE * fp;
