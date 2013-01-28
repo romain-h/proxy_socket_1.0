@@ -57,9 +57,9 @@ const char *request_methods[7]={
     "PUT", "DELETE", "LINK", "UNLINK"};
 
 static int inArray(char * myString);
-static float versionHTTP(char * myString);
+static int versionHTTP(char * myString);
 static int processRequest(int socket);
-static int checkHttpRequest(char * requestLine, char ** url);
+static int checkHttpRequest(char * requestLine, char ** url, char ** method);
 static int parseUrl(char * request, char * host, char * port, char * path);
 static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi);
 static int returnDataToClient(int socket, char ** filename);
@@ -84,7 +84,7 @@ static int inArray(char * myString)
 /* Function versionHTTP
 	Get the HTTP version from a string */
 	
-static float versionHTTP(char * myString)
+static int versionHTTP(char * myString)
 {
 	int i=0;
 	int j=0;
@@ -124,6 +124,7 @@ static int processRequest(int socket){
 
     int received, available=BUF_SIZE_RECV;
     char * url;
+	char * method;
 
     // receive request from client on current socket:
     while ( (received = recv(socket, buf, available, 0) > 0)){
@@ -146,25 +147,40 @@ static int processRequest(int socket){
     //Start verify request by HTTP specifications
     // To do that we need to separate orginal request line and options:
     char * pch;
-    char * requestFirstLine;
-    char * headerFields;
+    char * requestFirstLine = malloc(strlen(request)*sizeof(char));
+    char * headerFields = malloc(strlen(request)*sizeof(char));
     int i = 0;
+	printf("\nTHE REQUEST\n%s\n", request);
+	printf("------------\n");
     pch = strtok (request,"\r\n");
-    while((pch != NULL) && (i < 2)){
-        if(i==0){
-            requestFirstLine = pch;
-        } else{
-            headerFields = pch;
-        }
+    while(pch != NULL){
+        if(i==0)
+		{
+			strcpy(requestFirstLine, pch);
+		}
+		else if (i==1)
+		{
+			strcpy(headerFields, pch);
+		}
+		else
+		{
+			strcat(headerFields, "\r\n");
+			strcat(headerFields, pch);
+		}
+		pch = strtok (NULL, "\r\n");
         i++;
 
     }
-    printf("%s%s\n", "FL",requestFirstLine );
-    printf("%s%s\n", "option",headerFields );
+	// If there is no option, we replace it with a space
+	if(strcmp(headerFields,"\r\n"))
+	{
+		headerFields = " ";
+	}
+    printf("%s%s\n", "FL = ",requestFirstLine );
+    printf("%s%s\n", "option = ",headerFields );
 
 
-    if( checkHttpRequest(requestFirstLine,& url)) {
-
+    if( checkHttpRequest(requestFirstLine,& url, & method)) {
         char * host = malloc(strlen(url)*sizeof(char));
         char * port = malloc(5*sizeof(char));
         char * path = malloc(strlen(url)*sizeof(char));
@@ -185,7 +201,7 @@ static int processRequest(int socket){
 /* Refers to RFC 1945 5. Request (page 22)
 *  Method + URI + HTTP-Version
 */
-static int checkHttpRequest(char * requestLine, char ** url)
+static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 {
     printf("%s\n", requestLine);
 	char * pch;
@@ -199,13 +215,17 @@ static int checkHttpRequest(char * requestLine, char ** url)
 		pch = strtok (NULL, sp);
 		i++;
 	}
-	if(i<3)
+	
+	if(i<3) // If the request has less than the mandatory arguments
 	{
 		status erreur = {400, "Bad Request"};
 		return 0;
 	}
+	printf("%d",inArray(res[0]));
+	printf("%d",versionHTTP(res[2]));
 	if((inArray(res[0])) && (versionHTTP(res[2])))
 	{
+		*method = res[0];
 		*url = res[1];
 		return 1;
 	}
@@ -339,7 +359,7 @@ static int sendRequest(char * host, char * port, char * path, char ** filename, 
             strcpy(request, "GET ");            
             strcat(request, path);
             strcat(request, " HTTP/1.0\r\n\r\n");
-            printf("%s\n",  request);            
+            printf("\nSEND REQUEST\n%s\n",  request);            
 
             request = requestORi;
         /* translate host name into peer’s IP address */
