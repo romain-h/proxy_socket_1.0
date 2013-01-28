@@ -61,7 +61,7 @@ static int versionHTTP(char * myString);
 static int processRequest(int socket);
 static int checkHttpRequest(char * requestLine, char ** url, char ** method);
 static int parseUrl(char * request, char * host, char * port, char * path);
-static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi);
+static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi, char * method);
 static int returnDataToClient(int socket, char ** filename);
 /* Function inArray
 	Test if the string is in request_methods */
@@ -91,6 +91,7 @@ static int versionHTTP(char * myString)
 	int res=0;
 	int res1, res2, res3;
 	char *http="HTTP/";
+	char *pch;
 	char comp[5];
 	char version[3];
 	float httpVersion;
@@ -98,13 +99,17 @@ static int versionHTTP(char * myString)
 	{
 		comp[i]=myString[i];
 	}
-	for(j;j<3;j++)
-	{
-		version[j]=myString[j+5];
-	}
 	int result = strncmp(comp,http,5);
 	if(result == 0)
 	{
+		pch=strchr(myString,'/');
+		i=0;
+		j = pch - myString+1;
+		for(j;j<strlen(myString);j++)
+		{
+			version[i]= myString[j];
+			i++;
+		}
 		res1 = strcmp(version,"1.0");
 		res2 = strcmp(version,"0.9");
         res3 = strcmp(version,"1.1");
@@ -150,8 +155,6 @@ static int processRequest(int socket){
     char * requestFirstLine = malloc(strlen(request)*sizeof(char));
     char * headerFields = malloc(strlen(request)*sizeof(char));
     int i = 0;
-	printf("\nTHE REQUEST\n%s\n", request);
-	printf("------------\n");
     pch = strtok (request,"\r\n");
     while(pch != NULL){
         if(i==0)
@@ -172,13 +175,12 @@ static int processRequest(int socket){
 
     }
 	// If there is no option, we replace it with a space
-	if(strcmp(headerFields,"\r\n"))
+	if(strcmp(headerFields,"\r\n")==0)
 	{
 		headerFields = " ";
 	}
-    printf("%s%s\n", "FL = ",requestFirstLine );
-    printf("%s%s\n", "option = ",headerFields );
-
+	
+	
 
     if( checkHttpRequest(requestFirstLine,& url, & method)) {
         char * host = malloc(strlen(url)*sizeof(char));
@@ -190,7 +192,7 @@ static int processRequest(int socket){
 
             char * filename;
             
-            sendRequest(host, port, path, &filename, request);  
+            sendRequest(host, port, path, &filename, request, method);  
             returnDataToClient(socket,&filename); 
        }
    } else{
@@ -221,8 +223,6 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 		status erreur = {400, "Bad Request"};
 		return 0;
 	}
-	printf("%d",inArray(res[0]));
-	printf("%d",versionHTTP(res[2]));
 	if((inArray(res[0])) && (versionHTTP(res[2])))
 	{
 		*method = res[0];
@@ -318,7 +318,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 				firstSlash = strchr(request,'/') - request;
 				// We parse the host
 				strncpy(host, request, firstSlash);
-				strcpy(path,"80");
+				strcpy(port,"80");
 				
 				// We remove the host
 				j=0;
@@ -343,7 +343,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 	return res;
 }
 // Getting Data from the Remote Server => Connection to host port 80 by default  + send a HTTP request for the appropriate file.
-static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi){
+static int sendRequest(char * host, char * port, char * path, char ** filename, char * requestORi, char * method){
 
         struct hostent *hp;
         struct sockaddr_in sin;
@@ -356,12 +356,13 @@ static int sendRequest(char * host, char * port, char * path, char ** filename, 
 
         // request = "GET / HTTP/1.0\r\nUser-Agent: curl/7.21.4 (universal-apple-darwin11.0) libcurl/7.2.4 OpenSSL/0.9.8r zlib/1.2.5\nHost: hrdy.me\nAccept: */*\r\n\r\n";
         // request = "GET / HTTP/1.0\nHost: hrdy.me\r\n\r\n";
-            strcpy(request, "GET ");            
+            strcpy(request, method);       
+			strcat(request, " ");
             strcat(request, path);
             strcat(request, " HTTP/1.0\r\n\r\n");
             printf("\nSEND REQUEST\n%s\n",  request);            
 
-            request = requestORi;
+            // request = requestORi;
         /* translate host name into peer’s IP address */
         hp = gethostbyname(host);
         if (!hp) {
