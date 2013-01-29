@@ -3,9 +3,9 @@
 
 # Description
 - Assignment Proxy -
-This simple proxy allow HTTP request with HTTP/1.0 version. 
-This program currently not support multithread and can also deal with only one request at the time.
-This simple thread results with partial display of classique web page in a web browser.
+This simple proxy allows HTTP requests with HTTP/1.0 version. 
+This program does not currently support multithread. Thus it can only deal with one request at the time.
+This simple-threaded proxy will likely miss some requests, resulting in missing content as images.
 
 # Build
 This program can be compiled with the following command:
