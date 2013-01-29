@@ -63,6 +63,7 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method);
 static int parseUrl(char * request, char * host, char * port, char * path);
 static int sendRequest(char * method, char * host, char * port, char * path, char ** filename, char * headerFields);
 static int returnDataToClient(int socket, char ** filename);
+
 /* Function inArray
 	Test if the string is in request_methods */
 
@@ -71,7 +72,7 @@ static int inArray(char * myString)
     printf("%s\n", "Enter inArray....." );
 	int i=0;
 	int res=0;
-	for (i;i<7;i++)
+	for (i;i<7;i++) // We compare each element of the request_methods one by one
 	{
 		int result = strncmp(myString,request_methods[i],7);
 		if(result == 0)
@@ -100,24 +101,24 @@ static int versionHTTP(char * myString)
 	char *version = malloc(3*sizeof(char));
     bzero(version,sizeof(version));
 	
-
+	// We put the first 5 char in comp
 	for(i;i<5;i++)
 	{
 		comp[i]=myString[i];
 	}
 	int result = strncmp(comp,http,5);
-	if(result == 0)
+	if(result == 0) // We make sure that the 5 char are equal to HTTP/
 	{
 		pch=strchr(myString,'/');
         printf("%s%s\n", "NEW STRING", myString);
 		i=0;
 		j = pch - myString+1;
-		for(j;j<strlen(myString);j++)
+		for(j;j<strlen(myString);j++) // We get the 3 next characters (the version)
 		{
 			version[i]= myString[j];
 			i++;
 		}
-        printf("%s%s\n", "VERSION ::::", version );
+        printf("%s%s\n", "VERSION ::::", version ); // We make sure the version is 0.9, 1.0 or 1.1
 		res1 = strcmp(version,"1.0");
 		res2 = strcmp(version,"0.9");
         res3 = strcmp(version,"1.1");
@@ -129,6 +130,10 @@ static int versionHTTP(char * myString)
 	}
 	return res;
 }
+
+/* Function processRequest
+	This function is processing the http Request and send it to the server*/
+
 static int processRequest(int socket){
     printf("%s\n", "Enter processRequest....." );
     char *buf = malloc(BUF_SIZE_RECV * sizeof(char));
@@ -172,7 +177,7 @@ static int processRequest(int socket){
     bzero(headerFields, sizeof(headerFields));
 
     int i = 0;
-    pch = strtok (request,"\r\n");
+    pch = strtok (request,"\r\n");		// Separating the first line (the request) from the header fields
     while(pch != NULL){
         if(i==0)
 		{
@@ -198,7 +203,7 @@ static int processRequest(int socket){
 	// }
 	
 	
-
+	// We check that the request is properly formatted
     if( checkHttpRequest(requestFirstLine,& url, & method)) {
         char * host = malloc(strlen(url)*sizeof(char));
         bzero(host, sizeof(host));
@@ -208,7 +213,7 @@ static int processRequest(int socket){
         bzero(path,sizeof(path));
         
         printf("%s%s\n", "URL ::", url );
-       if(parseUrl(url, host, port, path))
+       if(parseUrl(url, host, port, path)) // We parse the URL to get host, port, path
        {
             printf("%s\n%s\n%s\n", host, port, path);
 
@@ -216,7 +221,6 @@ static int processRequest(int socket){
             
             sendRequest(method, host, port, path, &filename, headerFields);  
             returnDataToClient(socket,&filename);
-            
        }
    } else{
     printf("%s\n",  "Deso");
@@ -237,6 +241,7 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 	char *res[3];
     bzero(res,sizeof(res));
 	int i=0;
+	// We split the request using a space as delimiter
 	while ((pch != NULL)&&(i<3))
 	{
 		res[i]= pch;
@@ -250,14 +255,15 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 		status erreur = {400, "Bad Request"};
 		return 0;
 	}
+	// We check that the method and the version are correct
 	if((inArray(res[0])) && (versionHTTP(res[2])))
 	{
+		// We save the method and the url in a variable
 		*method = res[0];
 		*url = res[1];
 		return 1;
 	}
 	status erreur = {400, "Bad Request"};
-	// printf("%d %s", erreur.code, erreur.reason);
 	return 0;
 }
 
@@ -280,11 +286,13 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 	char *comp = malloc(7*sizeof(char));
 	unsigned int lastColumn;
 	unsigned int firstSlash;
+	// We get the first 7 characters of the url
 	for (i;i<7;i++)
 	{
 		comp[i]=request[i];
 	}
 	int result = strncmp(http,comp,7);
+	// If the 7 characters are http://
 	if(result == 0)
 	{
         printf("%s\n", "C'est egal je vire");
@@ -315,7 +323,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 			}
 			request[j]='\0';
 			
-			if(strrchr(request, '/') != NULL) // If there is a path
+			if(strrchr(request, '/') != NULL) // If there is a port and a path
 			{
                 printf("%s\n", "j'ai un de path");
 				// We get the position of the first slash in the string which is the limit between port and path
@@ -333,15 +341,17 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 					request[j]=request[j+lengthPort];
 				}
 				request[j]='\0';
-				
+				//We parse the path
 				strcpy(path, request);
 				res = 1;
 			}
-			else // If there is no path
+			else // If there is a port but no path
 			{
                 printf("%s\n", "Déso mais j'ai pas de path");
+				//We parse the port
 				strncpy(port, request, strlen(request));
                 port[strlen(request)] = '\0';
+				// We set the path as /
 				path = "/";
 				res = 1;
 			}
@@ -349,7 +359,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 		else // If there is no port
 		{
             printf("%s\n", "J'ai pas de port");
-			if(strchr(request, '/') != NULL) //If there is a path
+			if(strchr(request, '/') != NULL) //If there is a path but no port
 			{
                 printf("%s\n", "J'ai un path");
 				firstSlash = strchr(request,'/') - request;
@@ -362,6 +372,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
                 printf("%s%d\n","size of host:::", strlen(host) );
 				strncpy(host, request, firstSlash);
                 host[firstSlash]='\0';
+				// We set the port at 80
 				strcpy(port,"80");
 				
 				// We remove the host
@@ -376,14 +387,18 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 				}
 				request[j]='\0';
 				printf("%s%s\n","Nouveau Path", request );
+				//We parse the path
 				strcpy(path, request);
 				res = 1;
 			}
-			else
+			else // If there is no port and no path
 			{
                 printf("%s\n","J'ai pas de path" );
+				// We parse the host
 				strcpy(host, request);
+				// We set the default port at 80 
 				strcpy(port,"80");
+				// We set the default path at /
 				strcpy(path,"/");
 				res = 1;
 			}
