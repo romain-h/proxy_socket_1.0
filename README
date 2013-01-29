@@ -2,7 +2,9 @@
 ## Romain Hardy & Lucas Personnaz
 
 # Description
-This proxy allow HTTP request with HTTP/1.0 version. This program currently not support multithread and can also deal with one request at the time.
+- Assignment Proxy -
+This simple proxy allow HTTP request with HTTP/1.0 version. 
+This program currently not support multithread and can also deal with only one request at the time.
 This simple thread results with partial display of classique web page in a web browser.
 
 # Build
