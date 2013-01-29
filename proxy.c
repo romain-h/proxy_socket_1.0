@@ -196,11 +196,6 @@ static int processRequest(int socket){
         i++;
 
     }
-	// // If there is no option, we replace it with a space
-	// if(strcmp(headerFields,"\r\n")==0)
-	// {
-	// 	headerFields = "\r\n";
-	// }
 	
 	
 	// We check that the request is properly formatted
@@ -318,7 +313,6 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 			int lengthHost = strlen(host)+1;
 			for(j;j<strlen(request)-lengthHost;j++)
 			{
-				//printf("%d\n",j);
 				request[j]=request[j+lengthHost];
 			}
 			request[j]='\0';
@@ -366,8 +360,6 @@ static int parseUrl(char * request, char * host, char * port, char * path)
                 printf("%s%d\n","Position du /", firstSlash );
 				// We parse the host
                 printf("%s%s\n","Old  ", request );
-                // host = (char *) realloc(host,sizeof(char)*firstSlash);
-                // bzero(host, sizeof(host));
                 printf("%s\n", host);
                 printf("%s%d\n","size of host:::", strlen(host) );
 				strncpy(host, request, firstSlash);
