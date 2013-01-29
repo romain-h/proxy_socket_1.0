@@ -1,7 +1,7 @@
 
 //
-//  server.c
-//  csc450-server
+//  Proxy.c
+//  csc450-Assignment #2
 //
 //  Created by Romain Hardy and Lucas Personnaz on 12/14/12.
 //  Copyright (c) 2013 Romain Hardy / Lucas Personnaz. All rights reserved.
@@ -24,6 +24,7 @@
 #define MAX_CLIENTS_SIM 10 
 #define MAX_LINE 512
 #define BUF_SIZE_RECV 124
+int verbose = 0; //Verbose Option
 
 // use US-ASCII space (32):
 const char *sp = "\x20";
@@ -45,7 +46,6 @@ Status-Code    = "200"   ; OK
                       | "502"   ; Bad Gateway
                       | "503"   ; Service Unavailable
 */                
-
 typedef struct {
    int    code;
    char   *reason;
@@ -59,17 +59,17 @@ const char *request_methods[7]={
 static int inArray(char * myString);
 static int versionHTTP(char * myString);
 static int processRequest(int socket);
-static int checkHttpRequest(char * requestLine, char ** url, char ** method);
+static int checkHttpRequest(char * requestLine, char ** url, char ** method, status * st);
 static int parseUrl(char * request, char * host, char * port, char * path);
-static int sendRequest(char * method, char * host, char * port, char * path, char ** filename, char * headerFields);
+static int sendRequest(char * method, char * host, char * port, char * path, char ** filename, char * headerFields, status * st);
 static int returnDataToClient(int socket, char ** filename);
+static int sendStatusToClient(int socket, status * st);
 
 /* Function inArray
 	Test if the string is in request_methods */
 
 static int inArray(char * myString)
 {
-    printf("%s\n", "Enter inArray....." );
 	int i=0;
 	int res=0;
 	for (i;i<7;i++) // We compare each element of the request_methods one by one
@@ -88,8 +88,6 @@ static int inArray(char * myString)
 	
 static int versionHTTP(char * myString)
 {
-    printf("%s\n", "Enter versionHTTP....." );
-    printf("%s\n", myString );
 	int i=0;
 	int j=0;
 	int res=0;
@@ -109,8 +107,7 @@ static int versionHTTP(char * myString)
 	int result = strncmp(comp,http,5);
 	if(result == 0) // We make sure that the 5 char are equal to HTTP/
 	{
-		pch=strchr(myString,'/');
-        printf("%s%s\n", "NEW STRING", myString);
+		pch=strchr(myString,'/');        
 		i=0;
 		j = pch - myString+1;
 		for(j;j<strlen(myString);j++) // We get the 3 next characters (the version)
@@ -118,7 +115,7 @@ static int versionHTTP(char * myString)
 			version[i]= myString[j];
 			i++;
 		}
-        printf("%s%s\n", "VERSION ::::", version ); // We make sure the version is 0.9, 1.0 or 1.1
+        
 		res1 = strcmp(version,"1.0");
 		res2 = strcmp(version,"0.9");
         res3 = strcmp(version,"1.1");
@@ -135,7 +132,6 @@ static int versionHTTP(char * myString)
 	This function is processing the http Request and send it to the server*/
 
 static int processRequest(int socket){
-    printf("%s\n", "Enter processRequest....." );
     char *buf = malloc(BUF_SIZE_RECV * sizeof(char));
     bzero(buf,sizeof(buf));
     size_t request_size = BUF_SIZE_RECV;
@@ -143,6 +139,9 @@ static int processRequest(int socket){
     bzero(request,sizeof(request));
     char * request_buff = malloc(request_size * sizeof(char));
     bzero(request_buff,sizeof(request_buff));
+
+    //Initialize status that we are going to change during all the process
+    status mainStatus = {200, "OK"};
 
     int received, available=BUF_SIZE_RECV;
     char * url;
@@ -167,7 +166,6 @@ static int processRequest(int socket){
             break;  
     }
 
-    printf("%s%s\n", "Initial request ", request );
     //Start verify request by HTTP specifications
     // To do that we need to separate orginal request line and options:
     char * pch;
@@ -199,7 +197,7 @@ static int processRequest(int socket){
 	
 	
 	// We check that the request is properly formatted
-    if( checkHttpRequest(requestFirstLine,& url, & method)) {
+    if( checkHttpRequest(requestFirstLine,& url, & method, &mainStatus)) {
         char * host = malloc(strlen(url)*sizeof(char));
         bzero(host, sizeof(host));
         char * port = malloc(5*sizeof(char));
@@ -207,18 +205,20 @@ static int processRequest(int socket){
         char * path = malloc(strlen(url)*sizeof(char));
         bzero(path,sizeof(path));
         
-        printf("%s%s\n", "URL ::", url );
        if(parseUrl(url, host, port, path)) // We parse the URL to get host, port, path
        {
-            printf("%s\n%s\n%s\n", host, port, path);
-
+           //Initialize filename string
             char * filename;
             
-            sendRequest(method, host, port, path, &filename, headerFields);  
-            returnDataToClient(socket,&filename);
+            if(!sendRequest(method, host, port, path, &filename, headerFields, &mainStatus)){
+                sendStatusToClient(socket, &mainStatus);
+            } else{
+                returnDataToClient(socket,&filename);
+            } 
+            
        }
    } else{
-    printf("%s\n",  "Deso");
+    sendStatusToClient(socket, &mainStatus);
    }      
 
    return 1;       
@@ -227,10 +227,8 @@ static int processRequest(int socket){
 /* Refers to RFC 1945 5. Request (page 22)
 *  Method + URI + HTTP-Version
 */
-static int checkHttpRequest(char * requestLine, char ** url, char ** method)
+static int checkHttpRequest(char * requestLine, char ** url, char ** method, status * st)
 {
-    printf("%s\n", "Enter checkHttpRequest....." );
-    printf("%s\n", requestLine);
 	char * pch;
 	pch = strtok (requestLine,sp);
 	char *res[3];
@@ -247,7 +245,8 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 	
 	if(i<3) // If the request has less than the mandatory arguments
 	{
-		status erreur = {400, "Bad Request"};
+		st->code = 400;
+        st->reason =  "Bad Request";
 		return 0;
 	}
 	// We check that the method and the version are correct
@@ -258,7 +257,8 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 		*url = res[1];
 		return 1;
 	}
-	status erreur = {400, "Bad Request"};
+	st->code = 400;
+    st->reason =  "Bad Request";
 	return 0;
 }
 
@@ -273,7 +273,6 @@ static int checkHttpRequest(char * requestLine, char ** url, char ** method)
 
 static int parseUrl(char * request, char * host, char * port, char * path)
 {
-    printf("%s\n", "Enter parrseUrl....." );
 	int i = 0;
 	int j = 0;
 	int res =0;
@@ -290,7 +289,6 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 	// If the 7 characters are http://
 	if(result == 0)
 	{
-        printf("%s\n", "C'est egal je vire");
 		// We remove the http://
 		for(j;j<strlen(request)-7;j++)
 		{
@@ -301,8 +299,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 		
 		if(strrchr(request, ':')!= NULL) // If there is a port
 		{	
-            printf("%s\n","Test de port" );
-		// We get the position of the last column in the string which is the limit between host and port
+		  // We get the position of the last column in the string which is the limit between host and port
 			lastColumn = strrchr(request, ':') - request ;
 			// We parse the host 
 			strncpy(host, request, lastColumn);
@@ -319,7 +316,6 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 			
 			if(strrchr(request, '/') != NULL) // If there is a port and a path
 			{
-                printf("%s\n", "j'ai un de path");
 				// We get the position of the first slash in the string which is the limit between port and path
 				firstSlash = strchr(request, '/') - request;
 
@@ -341,7 +337,6 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 			}
 			else // If there is a port but no path
 			{
-                printf("%s\n", "Déso mais j'ai pas de path");
 				//We parse the port
 				strncpy(port, request, strlen(request));
                 port[strlen(request)] = '\0';
@@ -352,16 +347,11 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 		}
 		else // If there is no port
 		{
-            printf("%s\n", "J'ai pas de port");
 			if(strchr(request, '/') != NULL) //If there is a path but no port
-			{
-                printf("%s\n", "J'ai un path");
+			{                
 				firstSlash = strchr(request,'/') - request;
-                printf("%s%d\n","Position du /", firstSlash );
+                
 				// We parse the host
-                printf("%s%s\n","Old  ", request );
-                printf("%s\n", host);
-                printf("%s%d\n","size of host:::", strlen(host) );
 				strncpy(host, request, firstSlash);
                 host[firstSlash]='\0';
 				// We set the port at 80
@@ -371,21 +361,17 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 				j=0;
 				int lengthHost = strlen(host);
                 int tmp = strlen(request)-lengthHost;
-                printf("%s%s\n", "host:::", host );
-                printf("%s%d\n","length", lengthHost );
 				for(j;j<tmp;j++)
 				{
 					request[j]=request[j+lengthHost];
 				}
 				request[j]='\0';
-				printf("%s%s\n","Nouveau Path", request );
 				//We parse the path
 				strcpy(path, request);
 				res = 1;
 			}
 			else // If there is no port and no path
 			{
-                printf("%s\n","J'ai pas de path" );
 				// We parse the host
 				strcpy(host, request);
 				// We set the default port at 80 
@@ -398,8 +384,7 @@ static int parseUrl(char * request, char * host, char * port, char * path)
 	return res;
 }
 // Getting Data from the Remote Server => Connection to host port 80 by default  + send a HTTP request for the appropriate file.
-static int sendRequest(char * method, char * host, char * port, char * path, char ** filename, char * headerFields){
-    printf("%s\n", "Enter sendRequest....." );
+static int sendRequest(char * method, char * host, char * port, char * path, char ** filename, char * headerFields, status * st){
         struct hostent *hp;
         struct sockaddr_in sin;
         int socketClientRequest;
@@ -408,29 +393,26 @@ static int sendRequest(char * method, char * host, char * port, char * path, cha
         bzero(buf,sizeof(buf));
         int len;
         FILE * fileRet;
+
+        //Rebuild the original request
         char * request = malloc(500*sizeof(char));
         bzero(request,sizeof(request));
 
-        // request = "GET / HTTP/1.0\r\nUser-Agent: curl/7.21.4 (universal-apple-darwin11.0) libcurl/7.2.4 OpenSSL/0.9.8r zlib/1.2.5\nHost: hrdy.me\nAccept: */*\r\n\r\n";
-        // request = "GET / HTTP/1.0\nHost: hrdy.me\r\n\r\n";
-            strcpy(request, method);       
-			strcat(request, " ");
-            // strcat(request, host);
-            strcat(request, path);
-            strcat(request, " HTTP/1.0\r\n\r\n");
-            // strcat(request, headerFields);
-            // strcat(request, "\r\n");
-            
-            printf("\nSEND REQUEST\n%s\n",  request);            
+        strcpy(request, method);       
+		strcat(request, " ");
+        // strcat(request, host);
+        strcat(request, path);
+        strcat(request, " HTTP/1.0\r\n\r\n");
+        // strcat(request, headerFields);
+        // strcat(request, "\r\n");
 
-            // request = requestORi;
         /* translate host name into peer’s IP address */
         hp = gethostbyname(host);
         if (!hp) {
-            fprintf(stderr, "simplex-talk: unknown host: %s\n", host);
-            exit(1);
+            st->code = 400;
+            st->reason = "Bad Request";
+            return 0;
         }
-
 
         /* build address data structure */
         bzero((char *)&sin, sizeof(sin));
@@ -438,28 +420,27 @@ static int sendRequest(char * method, char * host, char * port, char * path, cha
         bcopy(hp->h_addr, (char *)&sin.sin_addr, hp->h_length);
         sin.sin_port = htons(atoi(port));
 
-
         /* active open */
         if ((socketClientRequest = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
-            perror("simplex-talk: socket");
-            exit(1);
+            st->code = 500;
+            st->reason = "Internal Server Error";
+            return 0;
         }
 
-        // setsockopt(socketClientRequest, IPPROTO_TCP, TCP_NODELAY, (const char *)&on, sizeof(int));
         // Connect to socket
         if (connect(socketClientRequest, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-            perror("simplex-talk: connect");
-            close(socketClientRequest);
-            exit(1);
+            st->code = 500;
+            st->reason = "Internal Server Error";
+            return 0;
         }
 
         // send request to server
         len = strlen(request) +1;
         if(send(socketClientRequest, request, len, 0) < 0){
-            perror("simplex-talk: Send buffer");
-        } else{
-            printf("%s\n", "J'ai envoyeß");
-        }
+            st->code = 500;
+            st->reason = "Internal Server Error";
+            return 0;
+        } 
 
         //Define FileName:
         *filename = "content.txt";
@@ -469,28 +450,20 @@ static int sendRequest(char * method, char * host, char * port, char * path, cha
         //receive data form server:
         int recv_size;
         while(recv_size = recv(socketClientRequest, buf, 512,0) > 0 ){
-            printf("%s%d\n", "JAI RECU :::::::::::::::",recv_size);
             //Store data to the text file:
             fputs(buf,fileRet);
-            bzero(buf, 512);
-            // if(recv_size < 512){
-            //     break;
-            // }            
+            bzero(buf, 512);        
         }
         //Close the file
         fclose(fileRet);
         // Close the socket connection
         close(socketClientRequest);
 
-   
-        printf("%s\n", "Jai fini send request");
-
- 
+        return 1; 
 }
 
 // Returning Data to the Client => Once the transaction is complete, the proxy should close the connection
 static int returnDataToClient(int socket, char ** filename){
-    printf("%s\n", "Return Data to Client");
     char *buf  = malloc(512*sizeof(char));
     bzero(buf, sizeof(buf));
     //Open the right file
@@ -500,13 +473,35 @@ static int returnDataToClient(int socket, char ** filename){
     // Read all data from file and send by chunck of 512 bytes.
     while(fgets(buf, sizeof(buf), fp) != NULL){
         if(write(socket , buf , strlen(buf)) < 0){
+            if(verbose)
             perror("Error send data from proxy to client");
+            exit(1);
         }
         bzero(buf, sizeof(buf));
     }
 
     fclose(fp);
     return 1;
+}
+// Returning status to client 
+static int sendStatusToClient(int socket, status * st){
+    char * stringStatus = malloc(sizeof(st)*sizeof(char));
+    bzero(stringStatus, sizeof(stringStatus));
+    //cast int to string
+    char * code = malloc(3*sizeof(char));    
+    sprintf(code, "%d", st->code);
+
+    //Built std RFC status line
+    strcpy(stringStatus, "HTTP/1.0 ");       
+    strcat(stringStatus, code);
+    strcat(stringStatus, " ");
+    strcat(stringStatus, st->reason);
+    strcat(stringStatus, "\r\n");
+
+
+    if(write(socket , stringStatus , strlen(stringStatus)) < 0){
+        perror("Error send data status code from proxy to client");
+    }
 }
 
 int main(int argc, const char * argv[])
@@ -515,14 +510,23 @@ int main(int argc, const char * argv[])
     socklen_t clilen;
     struct sockaddr_in sckin;
 	int main_socket, new_s; // Sockets
-    int len, opt = 1;    
+    int len, opt = 1;  
+     
 
     // Get port on first argument
     if (argc==2) {
         port = argv[1];
     }
+    else if(argc==3){
+        port = argv[1];
+        if(argv[2] == "-v"){
+            verbose = 1;
+        }
+    }
     else {
-        perror("usage: Please specify a port as first argument\n");
+        if(verbose){
+           perror("usage: Please specify a port as first argument\n"); 
+        }
         exit(1);
     }    
     
@@ -534,20 +538,23 @@ int main(int argc, const char * argv[])
 
     /*  We need to open a socket on TCP to handle HTTP requests. */
     if ((main_socket = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("simplex-talk: Error socket creation");
+        if(verbose)
+        perror("ERROR: Error socket creation");
         exit(1);
     }
     
     /* By default a socket is blocking. We should add some option on the main socket server to 
         set master socket to allow multiple connections */
     if (setsockopt(main_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt))<0) {
-        perror("simplex-talk: setsockopt non blocking");
+        if(verbose)
+        perror("ERROR: setsockopt non blocking");
         exit(1);
     }
     
     // Bind socket to the host and port number
     if ((bind(main_socket, (struct sockaddr *)&sckin, sizeof(sckin))) < 0) {
-        perror("simplex-talk: bind");
+        if(verbose)
+        perror("ERROR: bind");
         exit(1);
     }    
     
@@ -560,10 +567,13 @@ int main(int argc, const char * argv[])
     /* wait for connection, then receive and process HTTP Request */
     while(1) {
         if ((new_s = accept(main_socket, (struct sockaddr *)&sckin, &len)) < 0) {
-            perror("simplex-talk: accept");
+            if(verbose)
+            perror("ERROR: accept");
             exit(1);
         }
+        //Process Request for incoming connexion:
         if(processRequest(new_s)){
+            //Once processRequest is done clone socket 
             close(new_s);
         }
     }
